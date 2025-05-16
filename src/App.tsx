@@ -4,6 +4,7 @@ import ReactDOM from 'react-dom'
 import './App.css'
 import { config } from './config'
 import ReactMarkdown from 'react-markdown'
+import DinoGame from './DinoGame'
 
 interface Message {
   role: 'user' | 'assistant'
@@ -144,7 +145,7 @@ function App() {
   const [showBots, setShowBots] = useState(false)
   const botSelectBlockRef = useRef<HTMLDivElement>(null)
   const [logs, setLogs] = useState<LogEntry[]>([])
-  const [isConsoleOpen, setIsConsoleOpen] = useState(true)
+  const [isConsoleOpen, setIsConsoleOpen] = useState(false)
 
   useEffect(() => {
     if (chats.length === 0) {
@@ -595,10 +596,10 @@ function App() {
             <div className="message bot-message">
               <div className="avatar"><BotIcon /></div>
               <div className="message-content">
-                <div className="typing-indicator">
-                  <div className="typing-dot"></div>
-                  <div className="typing-dot"></div>
-                  <div className="typing-dot"></div>
+                <div className="dots-animation" style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-start', gap: '4px', height: '40px' }}>
+                  <div className="dot" style={{ background: isDarkTheme ? '#7fffd4' : '#388e3c' }} />
+                  <div className="dot" style={{ background: isDarkTheme ? '#7fffd4' : '#388e3c' }} />
+                  <div className="dot" style={{ background: isDarkTheme ? '#7fffd4' : '#388e3c' }} />
                 </div>
               </div>
             </div>
@@ -606,6 +607,11 @@ function App() {
           <div ref={messagesEndRef} />
         </div>
 
+        {isLoading && (
+          <div style={{ marginBottom: 8, width: '100%' }}>
+            <DinoGame isDark={isDarkTheme} />
+          </div>
+        )}
         <form onSubmit={handleSubmit} className="input-container">
           <div className="input-wrapper">
             {attachedFiles.length > 0 && (
