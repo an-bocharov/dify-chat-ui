@@ -179,6 +179,10 @@ function App() {
     return () => document.removeEventListener('mousedown', handleClick)
   }, [showBots])
 
+  useEffect(() => {
+    setLogs([])
+  }, [currentChatId])
+
   const toggleTheme = () => {
     setIsDarkTheme(prev => !prev)
   }
