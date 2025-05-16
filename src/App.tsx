@@ -483,9 +483,11 @@ function App() {
           ))}
         </div>
         <div className="bot-select-block" ref={botSelectBlockRef}>
-          <div className={`bot-list-toggle${selectedBotId ? ' selected' : ''}`} onClick={() => setShowBots(v => !v)}>
-            <span>{bots.find(b => b.id === selectedBotId)?.name || 'Бот'}</span>
-          </div>
+          {!showBots && (
+            <div className={`bot-list-toggle${selectedBotId ? ' selected' : ''}`} onClick={() => setShowBots(v => !v)}>
+              <span>{bots.find(b => b.id === selectedBotId)?.name || 'Бот'}</span>
+            </div>
+          )}
           {showBots && (
             <div className="bot-list">
               {bots.map(bot => (
