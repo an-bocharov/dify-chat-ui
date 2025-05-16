@@ -29,6 +29,12 @@ interface DifyError {
   code?: string
 }
 
+interface LogEntry {
+  type: 'request' | 'response' | 'error'
+  timestamp: number
+  data: any
+}
+
 const UserIcon = () => (
   <svg width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 16-4 16 0"/></svg>
 )
@@ -60,6 +66,13 @@ const RegenerateIcon = () => (
   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
     <path d="M3 3v5h5"/>
+  </svg>
+)
+const ConsoleIcon = () => (
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="2" y="3" width="20" height="18" rx="4" fill="none" stroke="currentColor" strokeWidth="2"/>
+    <polyline points="6,10 10,14 6,18" stroke="currentColor" strokeWidth="2" fill="none"/>
+    <line x1="13" y1="16" x2="18" y2="16" stroke="currentColor" strokeWidth="2"/>
   </svg>
 )
 
@@ -130,6 +143,8 @@ function App() {
   const menuBtnRefs = useRef<{[key: string]: HTMLButtonElement | null}>({})
   const [showBots, setShowBots] = useState(false)
   const botSelectBlockRef = useRef<HTMLDivElement>(null)
+  const [logs, setLogs] = useState<LogEntry[]>([])
+  const [isConsoleOpen, setIsConsoleOpen] = useState(true)
 
   useEffect(() => {
     if (chats.length === 0) {
@@ -258,12 +273,16 @@ function App() {
         requestBody.conversation_id = (currentChat as any).conversation_id
       }
 
+      setLogs(prev => [...prev, { type: 'request', timestamp: Date.now(), data: requestBody }])
+
       const response = await axios.post(config.dify.apiEndpoint, requestBody, {
         headers: {
           'Authorization': `Bearer ${currentBot.apiKey}`,
           'Content-Type': 'application/json'
         }
       })
+
+      setLogs(prev => [...prev, { type: 'response', timestamp: Date.now(), data: response.data }])
 
       const botMessage: Message = {
         role: 'assistant',
@@ -277,6 +296,7 @@ function App() {
       ))
     } catch (error) {
       const axiosError = error as AxiosError<DifyError>
+      setLogs(prev => [...prev, { type: 'error', timestamp: Date.now(), data: axiosError }])
       console.error('Error details:', {
         message: axiosError.message,
         response: axiosError.response?.data,
@@ -374,27 +394,21 @@ function App() {
 
   const regenerateResponse = async (messageIndex: number) => {
     if (!currentChat) return
-
-    // Удаляем все сообщения после указанного индекса
     const updatedMessages = currentChat.messages.slice(0, messageIndex + 1)
     setChats(prev => prev.map(chat =>
       chat.id === currentChatId
         ? { ...chat, messages: updatedMessages }
         : chat
     ))
-
     setIsLoading(true)
-
     try {
       if (!config.dify.apiEndpoint || !currentBot?.apiKey) {
         throw new Error('API configuration is missing')
       }
-
       const messages = updatedMessages.map(msg => ({
         role: msg.role,
         content: msg.content
       }))
-
       const requestBody: any = {
         inputs: {},
         query: updatedMessages[messageIndex].content,
@@ -405,19 +419,18 @@ function App() {
       if ((currentChat as any).conversation_id) {
         requestBody.conversation_id = (currentChat as any).conversation_id
       }
-
+      setLogs(prev => [...prev, { type: 'request', timestamp: Date.now(), data: requestBody }])
       const response = await axios.post(config.dify.apiEndpoint, requestBody, {
         headers: {
           'Authorization': `Bearer ${currentBot.apiKey}`,
           'Content-Type': 'application/json'
         }
       })
-
+      setLogs(prev => [...prev, { type: 'response', timestamp: Date.now(), data: response.data }])
       const botMessage: Message = {
         role: 'assistant',
         content: response.data.answer || response.data.message || response.data.text
       }
-
       setChats(prev => prev.map(chat =>
         chat.id === currentChatId
           ? { ...chat, messages: [...chat.messages, botMessage] }
@@ -425,6 +438,7 @@ function App() {
       ))
     } catch (error) {
       const axiosError = error as AxiosError<DifyError>
+      setLogs(prev => [...prev, { type: 'error', timestamp: Date.now(), data: axiosError }])
       console.error('Error details:', {
         message: axiosError.message,
         response: axiosError.response?.data,
@@ -645,6 +659,38 @@ function App() {
             </div>
           </div>
         </form>
+      </div>
+      <div
+        className={`console-panel${isConsoleOpen ? '' : ' console-collapsed'}`}
+        onClick={!isConsoleOpen ? () => setIsConsoleOpen(true) : undefined}
+        style={!isConsoleOpen ? { cursor: 'pointer' } : {}}
+      >
+        {!isConsoleOpen && (
+          <button className="console-toggle" tabIndex={-1} aria-hidden="true" style={{ pointerEvents: 'none' }}>
+            <ConsoleIcon />
+          </button>
+        )}
+        {isConsoleOpen && (
+          <>
+            <div className="console-header">
+              Console
+              <button className="console-toggle" onClick={() => setIsConsoleOpen(false)} title="Свернуть консоль">
+                <ConsoleIcon />
+              </button>
+            </div>
+            <div className="console-body">
+              {logs.length === 0 && <div className="console-empty">Нет запросов</div>}
+              {logs.map((log, i) => (
+                <div key={i} className={`console-log console-log-${log.type}`}>
+                  <div className="console-log-meta">
+                    {new Date(log.timestamp).toLocaleTimeString()} — {log.type}
+                  </div>
+                  <pre className="console-log-data">{JSON.stringify(log.data, null, 2)}</pre>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
       </div>
     </div>
   )
