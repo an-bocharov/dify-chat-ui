@@ -56,10 +56,16 @@ const DotsIcon = () => (
 const CrossIcon = () => (
   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
 )
+const RegenerateIcon = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+    <path d="M3 3v5h5"/>
+  </svg>
+)
 
 function ChatMenuPortal({ anchorRef, onDelete, onClose }: { anchorRef: React.RefObject<HTMLElement>, onDelete: () => void, onClose: () => void }) {
   const menuRef = useRef<HTMLDivElement>(null)
-  const [pos, setPos] = useState<{top: number, left: number}>({top: 0, left: 0})
+  const [pos, setPos] = useState<{top: number, left: number} | null>(null)
 
   useEffect(() => {
     if (anchorRef.current) {
@@ -78,6 +84,7 @@ function ChatMenuPortal({ anchorRef, onDelete, onClose }: { anchorRef: React.Ref
     return () => document.removeEventListener('mousedown', handleClick)
   }, [anchorRef, onClose])
 
+  if (!pos) return null;
   return ReactDOM.createPortal(
     <div
       ref={menuRef}
@@ -218,6 +225,9 @@ function App() {
     }
     setInput('')
     setAttachedFiles([])
+    if (textareaRef.current) {
+      textareaRef.current.style.height = '60px'
+    }
     setIsLoading(true)
 
     try {
@@ -231,12 +241,18 @@ function App() {
         type: file.type
       }))
 
+      const messages = [...currentChat.messages, userMessage].map(msg => ({
+        role: msg.role,
+        content: msg.content
+      }))
+
       const requestBody: any = {
         inputs: {},
         query: input,
         response_mode: "blocking",
         user: "user-123",
-        files: fileInfo
+        files: fileInfo,
+        messages: messages
       }
       if ((currentChat as any).conversation_id) {
         requestBody.conversation_id = (currentChat as any).conversation_id
@@ -356,6 +372,80 @@ function App() {
     setCurrentChatId(newChat.id)
   }
 
+  const regenerateResponse = async (messageIndex: number) => {
+    if (!currentChat) return
+
+    // Удаляем все сообщения после указанного индекса
+    const updatedMessages = currentChat.messages.slice(0, messageIndex + 1)
+    setChats(prev => prev.map(chat =>
+      chat.id === currentChatId
+        ? { ...chat, messages: updatedMessages }
+        : chat
+    ))
+
+    setIsLoading(true)
+
+    try {
+      if (!config.dify.apiEndpoint || !currentBot?.apiKey) {
+        throw new Error('API configuration is missing')
+      }
+
+      const messages = updatedMessages.map(msg => ({
+        role: msg.role,
+        content: msg.content
+      }))
+
+      const requestBody: any = {
+        inputs: {},
+        query: updatedMessages[messageIndex].content,
+        response_mode: "blocking",
+        user: "user-123",
+        messages: messages
+      }
+      if ((currentChat as any).conversation_id) {
+        requestBody.conversation_id = (currentChat as any).conversation_id
+      }
+
+      const response = await axios.post(config.dify.apiEndpoint, requestBody, {
+        headers: {
+          'Authorization': `Bearer ${currentBot.apiKey}`,
+          'Content-Type': 'application/json'
+        }
+      })
+
+      const botMessage: Message = {
+        role: 'assistant',
+        content: response.data.answer || response.data.message || response.data.text
+      }
+
+      setChats(prev => prev.map(chat =>
+        chat.id === currentChatId
+          ? { ...chat, messages: [...chat.messages, botMessage] }
+          : chat
+      ))
+    } catch (error) {
+      const axiosError = error as AxiosError<DifyError>
+      console.error('Error details:', {
+        message: axiosError.message,
+        response: axiosError.response?.data,
+        status: axiosError.response?.status
+      })
+      
+      const errorMessage: Message = {
+        role: 'assistant',
+        content: `Ошибка: ${axiosError.response?.data?.message || axiosError.message || 'Неизвестная ошибка'}`
+      }
+
+      setChats(prev => prev.map(chat =>
+        chat.id === currentChatId
+          ? { ...chat, messages: [...chat.messages, errorMessage] }
+          : chat
+      ))
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
   return (
     <div className={`app-container ${isDarkTheme ? 'dark-theme' : 'light-theme'}`}>
       <div className="sidebar">
@@ -393,9 +483,8 @@ function App() {
           ))}
         </div>
         <div className="bot-select-block" ref={botSelectBlockRef}>
-          <div className="bot-list-toggle" onClick={() => setShowBots(v => !v)}>
+          <div className={`bot-list-toggle${selectedBotId ? ' selected' : ''}`} onClick={() => setShowBots(v => !v)}>
             <span>{bots.find(b => b.id === selectedBotId)?.name || 'Бот'}</span>
-            <span style={{marginLeft: 8, fontSize: 14}}>{showBots ? '▲' : '▼'}</span>
           </div>
           {showBots && (
             <div className="bot-list">
@@ -468,6 +557,16 @@ function App() {
                       </div>
                     ))}
                   </div>
+                )}
+                {message.role === 'assistant' && index > 0 && (
+                  <button
+                    className="regenerate-button"
+                    onClick={() => regenerateResponse(index - 1)}
+                    disabled={isLoading}
+                    title="Перегенерировать ответ"
+                  >
+                    <RegenerateIcon />
+                  </button>
                 )}
               </div>
             </div>
